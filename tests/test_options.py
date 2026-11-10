@@ -1202,6 +1202,58 @@ def test_missing_envvar_sequence(runner, envvar, expected):
     assert f"Error: Missing option {expected}." in result.output
 
 
+def test_missing_envvar_auto_prefix(runner):
+    """Error hints include resolved auto_envvar_prefix when show_envvar is True."""
+    cli = click.Command(
+        "cli", params=[click.Option(["--foo"], show_envvar=True, required=True)]
+    )
+    result = runner.invoke(cli, auto_envvar_prefix="TEST")
+    assert result.exit_code == 2
+    assert "Error: Missing option '--foo' (env var: 'TEST_FOO')." in result.output
+
+    @click.command(context_settings={"auto_envvar_prefix": "MYAPP"})
+    @click.option("--port", type=int, required=True, show_envvar=True)
+    def cli2(port):
+        pass
+
+    result2 = runner.invoke(cli2, [])
+    assert result2.exit_code == 2
+    assert "Error: Missing option '--port' (env var: 'MYAPP_PORT')." in result2.output
+
+    # Invalid value error hint also includes auto env var
+    result3 = runner.invoke(cli2, ["--port", "invalid"])
+    assert result3.exit_code == 2
+    assert "Error: Invalid value for '--port' (env var: 'MYAPP_PORT')" in result3.output
+
+    # Explicit envvar takes precedence over auto prefix
+    @click.command(context_settings={"auto_envvar_prefix": "MYAPP"})
+    @click.option(
+        "--port", type=int, required=True, show_envvar=True, envvar="CUSTOM_PORT"
+    )
+    def cli3(port):
+        pass
+
+    result4 = runner.invoke(cli3, [])
+    assert result4.exit_code == 2
+    assert "Error: Missing option '--port' (env var: 'CUSTOM_PORT')." in result4.output
+
+    # allow_from_autoenv=False disables auto env var in hint
+    @click.command(context_settings={"auto_envvar_prefix": "MYAPP"})
+    @click.option(
+        "--port",
+        type=int,
+        required=True,
+        show_envvar=True,
+        allow_from_autoenv=False,
+    )
+    def cli4(port):
+        pass
+
+    result5 = runner.invoke(cli4, [])
+    assert result5.exit_code == 2
+    assert "Error: Missing option '--port'." in result5.output
+
+
 def test_case_insensitive_choice(runner):
     @click.command()
     @click.option("--foo", type=click.Choice(["Orange", "Apple"], case_sensitive=False))
